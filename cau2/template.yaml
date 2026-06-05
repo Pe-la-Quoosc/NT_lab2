@@ -1,0 +1,253 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: VPC Lab for CloudFormation Assignment
+
+Parameters:
+  VpcCIDR:
+    Type: String
+    Default: 10.0.0.0/16
+
+  PublicSubnetCIDR:
+    Type: String
+    Default: 10.0.1.0/24
+
+  PrivateSubnetCIDR:
+    Type: String
+    Default: 10.0.2.0/24
+
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: ntlab-key
+
+Resources:
+  MyVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+
+      EnableDnsSupport: true
+
+      EnableDnsHostnames: true
+
+      Tags:
+        - Key: Name
+          Value: Lab-VPC
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+
+    Properties:
+      VpcId: !Ref MyVPC
+
+      CidrBlock: !Ref PublicSubnetCIDR
+
+      MapPublicIpOnLaunch: true
+
+      AvailabilityZone: !Select [0, !GetAZs ""]
+
+      Tags:
+        - Key: Name
+          Value: Public-Subnet
+
+  PrivateSubnet:
+    Type: AWS::EC2::Subnet
+
+    Properties:
+      VpcId: !Ref MyVPC
+
+      CidrBlock: !Ref PrivateSubnetCIDR
+
+      AvailabilityZone: !Select [0, !GetAZs ""]
+
+      Tags:
+        - Key: Name
+          Value: Private-Subnet
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+    Properties:
+      Tags:
+        - Key: Name
+          Value: Lab-IGW
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+
+    Properties:
+      VpcId: !Ref MyVPC
+
+      InternetGatewayId: !Ref InternetGateway
+
+  NatEIP:
+    Type: AWS::EC2::EIP
+
+    DependsOn: AttachGateway
+
+    Properties:
+      Domain: vpc
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+
+    Properties:
+      AllocationId: !GetAtt NatEIP.AllocationId
+
+      SubnetId: !Ref PublicSubnet
+
+      Tags:
+        - Key: Name
+          Value: Lab-NAT
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+
+    Properties:
+      VpcId: !Ref MyVPC
+
+      Tags:
+        - Key: Name
+          Value: Public-RT
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+
+    DependsOn: AttachGateway
+
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+
+      DestinationCidrBlock: 0.0.0.0/0
+
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+
+    Properties:
+      SubnetId: !Ref PublicSubnet
+
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+
+    Properties:
+      VpcId: !Ref MyVPC
+
+      Tags:
+        - Key: Name
+          Value: Private-RT
+
+  PrivateRoute:
+    Type: AWS::EC2::Route
+
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+
+      DestinationCidrBlock: 0.0.0.0/0
+
+      NatGatewayId: !Ref NatGateway
+
+  PrivateSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+
+    Properties:
+      SubnetId: !Ref PrivateSubnet
+
+      RouteTableId: !Ref PrivateRouteTable
+
+  PublicEC2SG:
+    Type: AWS::EC2::SecurityGroup
+
+    Properties:
+      GroupDescription: Public EC2 Security Group
+
+      VpcId: !Ref MyVPC
+
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+
+      Tags:
+        - Key: Name
+          Value: Public-EC2-SG
+
+  PrivateEC2SG:
+    Type: AWS::EC2::SecurityGroup
+
+    Properties:
+      GroupDescription: Private EC2 Security Group
+
+      VpcId: !Ref MyVPC
+
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          SourceSecurityGroupId: !Ref PublicEC2SG
+
+      Tags:
+        - Key: Name
+          Value: Private-EC2-SG
+
+  PublicEC2:
+    Type: AWS::EC2::Instance
+
+    Properties:
+      InstanceType: t2.micro
+
+      ImageId: ami-0c101f26f147fa7fd
+
+      KeyName: !Ref KeyName
+
+      SubnetId: !Ref PublicSubnet
+
+      SecurityGroupIds:
+        - !Ref PublicEC2SG
+
+      Tags:
+        - Key: Name
+          Value: Public-EC2
+
+  PrivateEC2:
+    Type: AWS::EC2::Instance
+
+    Properties:
+      InstanceType: t2.micro
+
+      ImageId: ami-0c101f26f147fa7fd
+
+      KeyName: !Ref KeyName
+
+      SubnetId: !Ref PrivateSubnet
+
+      SecurityGroupIds:
+        - !Ref PrivateEC2SG
+
+      Tags:
+        - Key: Name
+          Value: Private-EC2
+
+Outputs:
+  VPCId:
+    Value: !Ref MyVPC
+
+  PublicSubnetId:
+    Value: !Ref PublicSubnet
+
+  PrivateSubnetId:
+    Value: !Ref PrivateSubnet
+
+  NatGatewayId:
+    Value: !Ref NatGateway
+
+  PublicEC2Id:
+    Value: !Ref PublicEC2
+
+  PrivateEC2Id:
+    Value: !Ref PrivateEC2
+
+  PublicEC2PublicIP:
+    Value: !GetAtt PublicEC2.PublicIp

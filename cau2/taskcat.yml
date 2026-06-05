@@ -1,0 +1,6 @@
+project:
+  name: ntlab
+
+tests:
+  default:
+    template: template.yaml
